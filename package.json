@@ -22,7 +22,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SpookySandwich/dsh-plugin-smooth-stream.git"
+    "url": "git+https://github.com/DeerFishSheep/dsh-plugin-smooth-stream.git"
+  },
+  "homepage": "https://github.com/DeerFishSheep/dsh-plugin-smooth-stream#readme",
+  "bugs": {
+    "url": "https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/issues"
   },
   "keywords": [
     "dsh",

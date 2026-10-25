@@ -2,26 +2,52 @@
 
 简体中文 | [English](README.en.md)
 
-[![npm](https://img.shields.io/npm/v/dsh-plugin-smooth-stream)](https://www.npmjs.com/package/dsh-plugin-smooth-stream)
-[![CI](https://github.com/SpookySandwich/dsh-plugin-smooth-stream/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-smooth-stream/actions/workflows/ci.yml)
+> **这是 [SpookySandwich/dsh-plugin-smooth-stream](https://github.com/SpookySandwich/dsh-plugin-smooth-stream) 的二改版（fork）。**
+> 修复了在 DSH 0.2 上每条消息渲染两遍、思考块无法实时展开、思考变长后页面不跟随滚动三个问题，
+> 并新增「自动展开当前步骤」。改动详见 [本版改动](#本版改动)。原项目版权归原作者，遵循 MIT。
+
+[![version](https://img.shields.io/badge/version-1.4.0-4b8dff)](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream)
+[![CI](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/actions/workflows/ci.yml/badge.svg)](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![dsh](https://img.shields.io/badge/dsh-0.2.0--rc.2-4b8dff)](https://github.com/deepseek-ai/deepseek-harness)
-[![deepseek1024](https://img.shields.io/badge/deepseek1024-%E5%B7%B2%E6%94%B6%E5%BD%95-4b8dff)](https://deepseek1024.com/plugins/SpookySandwich/dsh-smooth-stream)
-[![stars](https://img.shields.io/github/stars/SpookySandwich/dsh-plugin-smooth-stream?style=flat&label=stars)](https://github.com/SpookySandwich/dsh-plugin-smooth-stream/stargazers)
+[![dsh](https://img.shields.io/badge/dsh-0.2.0--rc.2%20~%200.2.1--rc.3-4b8dff)](https://github.com/deepseek-ai/deepseek-harness)
+[![stars](https://img.shields.io/github/stars/DeerFishSheep/dsh-plugin-smooth-stream?style=flat&label=stars)](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/stargazers)
 
 把逐字抖动的流式输出，换成按段落分批、淡入呈现的阅读体验。流式期间平滑跟随滚动，思考块显示实时单行摘要。
 
 **左：DSH 原生渲染 · 右：Smooth Stream** —— 同一个问题，同时开始：
 
-![对比演示](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/demo.gif)
+![对比演示](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/demo.gif)
 
 ## 安装
 
+从本仓库直接安装（推荐，一条命令）：
+
 ```bash
-dsh plugin --profile web add dsh-plugin-smooth-stream
+dsh plugin --profile desktop add github:DeerFishSheep/dsh-plugin-smooth-stream
 ```
 
-打开任意会话即可生效。设置入口：设置面板 → **Smooth Stream**。
+没有 `dsh` 命令行时，用包管理器直接装进 profile：
+
+```bash
+cd ~/.dsh/profiles/desktop && pnpm add github:DeerFishSheep/dsh-plugin-smooth-stream
+```
+
+> `desktop` 换成你实际的 profile 名，用 `ls ~/.dsh/profiles/` 查看。
+> 安装需要能访问 GitHub；本包与 npm 上的同名包互相覆盖，直接装即可，不用先卸载。
+
+打开任意会话即可生效。设置入口：设置面板 → **Smooth Stream**。装完请重启或刷新 DSH。
+
+## 本版改动
+
+相对上游 `1.3.0`，本版 `1.4.0` 修了三个问题、加了一个功能：
+
+| 项目 | 说明 |
+|---|---|
+| 消息渲染两遍 | DSH 0.2 会把一条 assistant 消息拆成「思考」和「正文」两次渲染，本插件原先两次都画全量内容。现已按 `groupPart` 过滤，与宿主行为一致（对应上游 issue #2） |
+| 思考块显示不出来 | 思考块原先要攒满 1000 字才渲染第一段，短思考全程不可见；阈值已归零，整段无换行也不会卡住 |
+| 思考块误判已结束 | 原先以「数组最后一个元素」判断当前步骤，消息尾部若带空块或工具调用，思考块会刚出现就收起；现改为「最后一个有内容的块」 |
+| **自动展开当前步骤**（新增） | 正在输出的步骤自动展开，开始下一步时自动收起；手动点击优先，直到该步骤角色变化。默认开启，可在设置里关闭 |
+| 滚动跟随 | 原先只有一行 `scroll-behavior: smooth`，没有任何代码真正滚动，思考变长就会滑到输入框下面。现用 `ResizeObserver` 监测高度增长并贴底，往上翻看历史时不会被打扰 |
 
 ## 它改变了什么
 
@@ -51,25 +77,27 @@ dsh plugin --profile web add dsh-plugin-smooth-stream
 
 | 淡入 Fade | 上升 Rise |
 |---|---|
-| ![fade](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/variants/fade.gif) | ![rise](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/variants/rise.gif) |
+| ![fade](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/variants/fade.gif) | ![rise](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/variants/rise.gif) |
 | **浮现 Dissolve** | **拂过 Wipe** |
-| ![dissolve](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/variants/dissolve.gif) | ![wipe](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/variants/wipe.gif) |
+| ![dissolve](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/variants/dissolve.gif) | ![wipe](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/variants/wipe.gif) |
 | **聚焦 Focus** | **映亮 Glow** |
-| ![focus](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/variants/focus.gif) | ![glow](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/variants/glow.gif) |
+| ![focus](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/variants/focus.gif) | ![glow](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/variants/glow.gif) |
 | **晕开 Iris** | **洇染 Soak** |
-| ![iris](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/variants/iris.gif) | ![soak](https://raw.githubusercontent.com/SpookySandwich/dsh-plugin-smooth-stream/main/assets/variants/soak.gif) |
+| ![iris](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/variants/iris.gif) | ![soak](https://raw.githubusercontent.com/DeerFishSheep/dsh-plugin-smooth-stream/main/assets/variants/soak.gif) |
 
 ## 兼容性
 
-版本 `1.3.0`：可在官方 dsh `0.2.0-rc.2` 上加载。渲染仍注册在 `conversation.chat.node` 与 `settings.section`。
+版本 `1.4.0`（本仓库）：修复 DSH 0.2 下的双重渲染，新增「自动展开当前步骤」，并让滚动真正跟随内容增长。渲染仍注册在 `conversation.chat.node` 与 `settings.section`。已在 DSH `0.2.1-rc.3` 上验证。
+
+版本 `1.3.0`（上游）：可在官方 dsh `0.2.0-rc.2` 上加载。
 
 版本 `1.2.0`：更新客户端渲染服务依赖与已验证的 DSH 版本范围；现有渲染行为通过新版宿主验证。
 
 声明兼容范围为 `>=0.2.0-rc.2 <0.3.0-0`；官方 dsh `0.2.0-rc.2` 满足该范围。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.1.5.md)。
 
-可从 [GitHub Release](https://github.com/SpookySandwich/dsh-plugin-smooth-stream/releases/tag/v1.3.0) 下载发布包，然后执行 `dsh plugin --profile desktop add ./dsh-plugin-smooth-stream-1.3.0.tgz`。
+如需固定版本，可从 [GitHub Release](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/releases) 下载 `.tgz`，再执行 `dsh plugin --profile desktop add ./dsh-plugin-smooth-stream-1.4.0.tgz`；也可在依赖里写 `github:DeerFishSheep/dsh-plugin-smooth-stream#<commit>`。
 
-本次兼容目标为 DSH `0.2.0-rc.2`。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
+运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
 
 
 - 使用宿主的客户端服务、Markdown 和图片接口；自动化测试覆盖加载与组件渲染。
