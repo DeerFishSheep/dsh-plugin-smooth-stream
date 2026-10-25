@@ -6,7 +6,7 @@
 > 修复了在 DSH 0.2 上每条消息渲染两遍、思考块无法实时展开、思考变长后页面不跟随滚动三个问题，
 > 并新增「自动展开当前步骤」。改动详见 [本版改动](#本版改动)。原项目版权归原作者，遵循 MIT。
 
-[![version](https://img.shields.io/badge/version-1.4.0-4b8dff)](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream)
+[![version](https://img.shields.io/badge/version-1.5.0-4b8dff)](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream)
 [![CI](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/actions/workflows/ci.yml/badge.svg)](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![dsh](https://img.shields.io/badge/dsh-0.2.0--rc.2%20~%200.2.1--rc.3-4b8dff)](https://github.com/deepseek-ai/deepseek-harness)
@@ -39,7 +39,7 @@ cd ~/.dsh/profiles/desktop && pnpm add github:DeerFishSheep/dsh-plugin-smooth-st
 
 ## 本版改动
 
-相对上游 `1.3.0`，本版 `1.4.0` 修了三个问题、加了一个功能：
+相对上游 `1.3.0`，本版 `1.5.0` 修了三个问题、加了两个功能：
 
 | 项目 | 说明 |
 |---|---|
@@ -47,6 +47,7 @@ cd ~/.dsh/profiles/desktop && pnpm add github:DeerFishSheep/dsh-plugin-smooth-st
 | 思考块显示不出来 | 思考块原先要攒满 1000 字才渲染第一段，短思考全程不可见；阈值已归零，整段无换行也不会卡住 |
 | 思考块误判已结束 | 原先以「数组最后一个元素」判断当前步骤，消息尾部若带空块或工具调用，思考块会刚出现就收起；现改为「最后一个有内容的块」 |
 | **自动展开当前步骤**（新增） | 正在输出的步骤自动展开，开始下一步时自动收起；手动点击优先，直到该步骤角色变化。默认开启，可在设置里关闭 |
+| **思考收起时机**（新增） | 可切换「下一段思考开始时」或「正文开始时」收起思考。默认前者，正文输出期间思考仍保持展开 |
 | 滚动跟随 | 原先只有一行 `scroll-behavior: smooth`，没有任何代码真正滚动，思考变长就会滑到输入框下面。现用 `ResizeObserver` 监测高度增长并贴底，往上翻看历史时不会被打扰 |
 
 ## 它改变了什么
@@ -68,6 +69,7 @@ cd ~/.dsh/profiles/desktop && pnpm add github:DeerFishSheep/dsh-plugin-smooth-st
 | 分批大小 | 500 字符 | 攒多少文字呈现一批；越小越"实时"，越大越安静 |
 | 平滑滚动跟随 | 开 | 流式期间的平滑滚动跟随 |
 | 自动展开当前步骤 | 开 | 正在输出的思考步骤自动展开，开始下一步时自动收起 |
+| 思考收起时机 | 下一段思考开始时 | 可选「下一段思考开始时」或「正文开始时」。前者让思考在正文输出期间仍然可读；后者长回复更省屏幕 |
 
 带实时预览，可一键恢复默认。设置界面跟随 DSH 的显示语言。
 
@@ -87,7 +89,7 @@ cd ~/.dsh/profiles/desktop && pnpm add github:DeerFishSheep/dsh-plugin-smooth-st
 
 ## 兼容性
 
-版本 `1.4.0`（本仓库）：修复 DSH 0.2 下的双重渲染，新增「自动展开当前步骤」，并让滚动真正跟随内容增长。渲染仍注册在 `conversation.chat.node` 与 `settings.section`。已在 DSH `0.2.1-rc.3` 上验证。
+版本 `1.5.0`（本仓库）：修复 DSH 0.2 下的双重渲染，新增「自动展开当前步骤」与「思考收起时机」，并让滚动真正跟随内容增长。渲染仍注册在 `conversation.chat.node` 与 `settings.section`。已在 DSH `0.2.1-rc.3` 上验证。
 
 版本 `1.3.0`（上游）：可在官方 dsh `0.2.0-rc.2` 上加载。
 
@@ -95,7 +97,7 @@ cd ~/.dsh/profiles/desktop && pnpm add github:DeerFishSheep/dsh-plugin-smooth-st
 
 声明兼容范围为 `>=0.2.0-rc.2 <0.3.0-0`；官方 dsh `0.2.0-rc.2` 满足该范围。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.1.5.md)。
 
-如需固定版本，可从 [GitHub Release](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/releases) 下载 `.tgz`，再执行 `dsh plugin --profile desktop add ./dsh-plugin-smooth-stream-1.4.0.tgz`；也可在依赖里写 `github:DeerFishSheep/dsh-plugin-smooth-stream#<commit>`。
+如需固定版本，可从 [GitHub Release](https://github.com/DeerFishSheep/dsh-plugin-smooth-stream/releases) 下载 `.tgz`，再执行 `dsh plugin --profile desktop add ./dsh-plugin-smooth-stream-1.5.0.tgz`；也可在依赖里写 `github:DeerFishSheep/dsh-plugin-smooth-stream#<commit>`。
 
 运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
 
