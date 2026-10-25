@@ -1,9 +1,13 @@
 // dsh-plugin-smooth-stream v1.1
 // Smooth assistant output for DeepSeek Harness.
 
-const SUMMARY_TICK_MS = 1000;
+const SUMMARY_TICK_MS = 350;
 const BODY_POLL_MS = 200;
-const THINK_MIN_CHARS = 1000;
+// Reasoning used to wait for 1000 chars before its first paragraph landed, so a
+// short think never appeared at all before the answer started. A think is read
+// live and is short by nature: reveal whatever has arrived, paragraph by
+// paragraph, with no minimum. The entrance animation still supplies the calm.
+const THINK_MIN_CHARS = 0;
 // Per-paragraph offset when one batch reveals several at once, and the cap on
 // how many steps that cascade may span.
 const STAGGER_MS = 70;
@@ -25,6 +29,9 @@ const SETTINGS_DEFAULTS = {
   reveal: 'fade',
   // Ease the conversation toward the bottom while streaming.
   smoothFollow: true,
+  // Expand the step that is currently streaming, and fold it back once the
+  // next step starts, so only the live step is open at any moment.
+  autoExpandStep: true,
 };
 // Curated per-effect tuning. Each entrance reads best at its own tempo and
 // batch rhythm (a soak wants long strokes over large batches, a wipe wants
@@ -61,6 +68,7 @@ function sanitizeSettings(raw) {
   if (raw.reveal === 'none') out.enabled = false;
   out.reveal = REVEAL_OPTIONS.indexOf(raw.reveal) !== -1 ? raw.reveal : SETTINGS_DEFAULTS.reveal;
   out.smoothFollow = typeof raw.smoothFollow === 'boolean' ? raw.smoothFollow : SETTINGS_DEFAULTS.smoothFollow;
+  out.autoExpandStep = typeof raw.autoExpandStep === 'boolean' ? raw.autoExpandStep : SETTINGS_DEFAULTS.autoExpandStep;
   const rawTuning = raw.tuning && typeof raw.tuning === 'object' ? raw.tuning : {};
   out.tuning = {};
   for (let i = 0; i < REVEAL_OPTIONS.length; i++) {
@@ -236,7 +244,7 @@ function extendToSafeMarkdown(text, pos, flush) {
   }
   return pos;
 }
-function paragraphTarget(text, shown, flush, minChars) {
+function paragraphTarget(text, shown, flush, minChars, tailFallback) {
   if (typeof text !== 'string') return 0;
   if (flush) return text.length;
   const need = shown + minChars;
@@ -248,7 +256,9 @@ function paragraphTarget(text, shown, flush, minChars) {
     const nl = text.indexOf('\n', need);
     if (nl !== -1) pos = nl + 1;
   }
-  if (pos === -1) return shown;
+  // A think that never breaks a line would otherwise never advance at all and
+  // stay invisible for the whole step.
+  if (pos === -1) return tailFallback ? text.length : shown;
   pos = extendToSafeMarkdown(text, pos, false);
   return pos > shown ? pos : shown;
 }
@@ -596,6 +606,8 @@ return {
         batchUnit: 'chars',
         batchHint: 'How much text accumulates before a paragraph batch reveals. Smaller feels more live; larger reads calmer.',
         follow: 'Smooth scroll-follow while streaming',
+        autoExpand: 'Auto-expand the live step',
+        autoExpandHint: 'The step being written stays open; starting the next one folds it back.',
         replay: 'Replay preview',
         reset: 'Reset to defaults',
         'opt.fade': 'Fade', 'opt.rise': 'Rise', 'opt.dissolve': 'Dissolve',
@@ -612,6 +624,8 @@ return {
         batchUnit: '字符',
         batchHint: '攒多少文字呈现一批：越小越"实时"，越大越安静。',
         follow: '流式期间平滑滚动跟随',
+        autoExpand: '自动展开当前步骤',
+        autoExpandHint: '正在输出的步骤自动展开，开始下一步时自动收起。',
         replay: '重播预览',
         reset: '恢复默认',
         'opt.fade': '淡入', 'opt.rise': '上升', 'opt.dissolve': '浮现',
@@ -675,7 +689,24 @@ return {
     }
 
     function ReasoningView(props) {
-      const [expanded, setExpanded] = React.useState(false);
+      // `autoOpen` is the per-step "this is the step in progress" flag computed
+      // by the parent. When auto-expand is on it wins over the local choice, so
+      // the row opens by itself while it streams and folds back the moment a
+      // later step begins. A manual click only overrides until this row changes
+      // role; otherwise one click would pin a finished step open forever.
+      const [manual, setManual] = React.useState(null);
+      const [expanded, setExpanded] = React.useState(!!props.autoOpen);
+      const prevAutoRef = React.useRef(props.autoOpen);
+      React.useEffect(function () {
+        const changed = prevAutoRef.current !== props.autoOpen;
+        prevAutoRef.current = props.autoOpen;
+        if (changed) {
+          setManual(null);
+          setExpanded(!!props.autoOpen);
+          return;
+        }
+        if (manual === null) setExpanded(!!props.autoOpen);
+      }, [props.autoOpen, manual]);
       const summaryRef = React.useRef(null);
       const summarySrc = props.summaryText !== undefined ? props.summaryText : props.text;
       const summary = props.running ? latestLine(summarySrc) : firstLine(summarySrc);
@@ -726,7 +757,12 @@ return {
           }, summary)
         )
       );
-      const toggle = function () { setExpanded(function (v) { return !v; }); };
+      const toggle = function () {
+        setExpanded(function (v) {
+          setManual(!v);
+          return !v;
+        });
+      };
       const chevron = IconChevron14('dss-nr-chevron');
       const leading = expanded
         ? chevron
@@ -789,6 +825,11 @@ return {
       const node = props.node;
       const data = (node && node.data) || {};
       const blocks = Array.isArray(data.blocks) ? data.blocks : [];
+      // DSH 0.2 renders one assistant-step twice: once with groupPart="reasoning"
+      // (think rows only) and once with groupPart="response" (the answer only).
+      // Without honouring it both instances draw every block, so each message
+      // showed up twice on screen. The host renderer filters the same way.
+      const groupPart = props.groupPart;
       const status = data.status === 'running' ? 'running' : (data.status === 'interrupted' ? 'interrupted' : 'settled');
       const streaming = status === 'running';
       const process = props.turnProcess;
@@ -868,8 +909,9 @@ return {
             if (!b || (b.kind !== 'text' && b.kind !== 'reasoning') || typeof b.text !== 'string') continue;
             const flush = !live || laterBlockStarted(list, i);
             if (kind === 'body' || b.kind === 'text') {
-              const min = b.kind === 'reasoning' ? THINK_MIN_CHARS : activeTuning(settingsStore.get()).textMinChars;
-              const target = paragraphTarget(b.text, s.shown[i], flush, min);
+              const isThink = b.kind === 'reasoning';
+              const min = isThink ? THINK_MIN_CHARS : activeTuning(settingsStore.get()).textMinChars;
+              const target = paragraphTarget(b.text, s.shown[i], flush, min, isThink);
               if (target > s.shown[i]) {
                 s.prev[i] = s.shown[i];
                 s.shown[i] = target;
@@ -901,6 +943,21 @@ return {
 
       const rendered = [];
       const lastIdx = blocks.length - 1;
+      // Which step is in progress? Only that one may stay open. Liveness is not
+      // "the last array slot": a message often ends with an empty text block or
+      // a tool call, which would otherwise make the think row look superseded
+      // the instant it appears. The live block is the last one that actually
+      // carries text.
+      let liveIdx = -1;
+      for (let i = blocks.length - 1; i >= 0; i -= 1) {
+        const b = blocks[i];
+        if (!b) continue;
+        if (b.kind !== 'text' && b.kind !== 'reasoning') continue;
+        if (typeof b.text !== 'string' || b.text === '') continue;
+        liveIdx = i;
+        break;
+      }
+      const autoExpand = settings.autoExpandStep && streaming;
       // The closing underline belongs to the turn's final reasoning row only:
       // one gesture per turn, not one per think segment.
       let lastReasoningIdx = -1;
@@ -911,6 +968,8 @@ return {
         const b = blocks[i];
         if (!b) continue;
         if (b.kind === 'tool-call') continue;
+        if (groupPart === 'reasoning' && b.kind !== 'reasoning') continue;
+        if (groupPart === 'response' && b.kind === 'reasoning') continue;
         if (b.kind === 'text' && typeof b.text === 'string') {
           const shown = Math.min(stateRef.current.shown[i] || 0, b.text.length);
           const prevShown = Math.min(stateRef.current.prev[i] || 0, shown);
@@ -944,9 +1003,10 @@ return {
             bodyFresh: bodyShown > prevShown ? b.text.slice(prevShown, bodyShown) : '',
             batchId: batchId,
             summaryBatch: summaryBatch,
-            running: streaming && i === lastIdx,
+            running: streaming && i === liveIdx,
             turnStreaming: streaming,
-            settleEligible: i === lastReasoningIdx
+            settleEligible: i === lastReasoningIdx,
+            autoOpen: autoExpand ? i === liveIdx : false
           }));
         } else if (b.kind === 'image') {
           if (typeof props.renderMessageImages === 'function') {
@@ -981,7 +1041,9 @@ return {
       },
         React.createElement('div', { className: 'dss-body' },
           rendered,
-          status === 'interrupted' ? React.createElement('span', { className: 'dss-stopped' }, t('message.stopped') || 'Stopped') : null
+          status === 'interrupted' && (groupPart === void 0 || groupPart === 'response')
+            ? React.createElement('span', { className: 'dss-stopped' }, t('message.stopped') || 'Stopped')
+            : null
         )
       );
     }
@@ -995,9 +1057,13 @@ return {
       let out = '';
       try {
         const blocks = (props.node && props.node.data && props.node.data.blocks) || [];
+        const part = props.groupPart;
         for (let i = 0; i < blocks.length; i++) {
           const b = blocks[i];
-          if (b && b.kind === 'text' && typeof b.text === 'string') out += (out ? '\n\n' : '') + b.text;
+          if (!b) continue;
+          if (part === 'reasoning' && b.kind !== 'reasoning') continue;
+          if (part === 'response' && b.kind === 'reasoning') continue;
+          if (b.kind === 'text' && typeof b.text === 'string') out += (out ? '\n\n' : '') + b.text;
         }
       } catch (e) {}
       return React.createElement('div', { className: 'dss-root' },
@@ -1016,7 +1082,7 @@ return {
     Boundary.prototype.constructor = Boundary;
     Boundary.getDerivedStateFromError = function () { return { failed: true }; };
     Boundary.prototype.render = function () {
-      if (this.state.failed) return React.createElement(PlainFallback, { node: this.props.ownerProps.node });
+      if (this.state.failed) return React.createElement(PlainFallback, { node: this.props.ownerProps.node, groupPart: this.props.ownerProps.groupPart });
       return React.createElement(SmoothAssistantNode, this.props.ownerProps);
     };
 
@@ -1163,6 +1229,14 @@ return {
             onChange: function (e) { settingsStore.set({ smoothFollow: e.target.checked }); },
           }),
           React.createElement('span', null, t('follow'))
+        ),
+        React.createElement('label', { className: 'dss-set-check' },
+          React.createElement('input', {
+            type: 'checkbox', checked: s.autoExpandStep,
+            onChange: function (e) { settingsStore.set({ autoExpandStep: e.target.checked }); },
+          }),
+          React.createElement('span', null, t('autoExpand')),
+          React.createElement('span', { className: 'dss-set-hint' }, t('autoExpandHint'))
         ),
         React.createElement(PreviewBox, { settings: s, replay: replay }),
         React.createElement('div', { className: 'dss-set-actions' },

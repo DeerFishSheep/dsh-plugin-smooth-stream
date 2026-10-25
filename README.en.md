@@ -41,6 +41,7 @@ The **Smooth Stream** section in the settings panel; changes apply live and pers
 | Animation duration | 520 ms | Entrance duration (120–1200 ms) |
 | Batch size | 500 chars | Text accumulated before a batch reveals; smaller feels more live, larger reads calmer |
 | Smooth scroll-follow | On | The streaming-time scroll glide |
+| Auto-expand live step | On | The step being written stays open; starting the next one folds it back |
 
 Includes a live preview and one-click reset. The settings UI follows DSH's display language.
 
