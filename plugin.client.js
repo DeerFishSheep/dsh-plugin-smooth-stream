@@ -303,6 +303,61 @@ function findScrollport(from) {
   const doc = g && g.document;
   return doc ? doc.querySelector('[data-conversation-scroll]') : null;
 }
+// How close to the bottom still counts as "following the live output".
+const FOLLOW_SLACK_PX = 96;
+/**
+ * Keep the conversation pinned to its newest line while this row grows.
+ *
+ * The `.dss-smooth-follow` class only sets `scroll-behavior: smooth`; nothing in
+ * the host scrolls the port when a think row expands, so a long one silently
+ * grew past the fold with the viewport left behind. Observed height is the only
+ * signal that covers every reveal path at once (batch reveal, think expand,
+ * animation settle), so a ResizeObserver on the row drives it.
+ *
+ * Following stops as soon as the reader scrolls away and resumes only when they
+ * come back to the bottom themselves.
+ *
+ * @param port - conversation scrollport.
+ * @param row - the message row whose growth should pull the port down.
+ * @returns disposer, or undefined when this environment cannot observe.
+ */
+function followGrowth(port, row) {
+  const g = realGlobal();
+  if (!port || !row || !g) return undefined;
+  function pinned() {
+    return port.scrollHeight - port.scrollTop - port.clientHeight <= FOLLOW_SLACK_PX;
+  }
+  // A mounted row must not yank a reader who is already scrolled up into the
+  // archive; only a port that is at the bottom starts in following mode.
+  let following = pinned();
+  function onScroll() { following = pinned(); }
+  function pin() {
+    if (!following) return;
+    // The smooth class would otherwise animate every pin and lag behind a fast
+    // stream; a pin has to land on this frame.
+    const previous = port.style.scrollBehavior;
+    port.style.scrollBehavior = 'auto';
+    port.scrollTop = port.scrollHeight;
+    port.style.scrollBehavior = previous;
+  }
+  port.addEventListener('scroll', onScroll, { passive: true });
+  let observer = null;
+  if (typeof g.ResizeObserver === 'function') {
+    observer = new g.ResizeObserver(pin);
+    observer.observe(row);
+  } else if (typeof g.setInterval === 'function') {
+    const timer = g.setInterval(pin, 250);
+    observer = { disconnect: function () { g.clearInterval(timer); } };
+  } else {
+    port.removeEventListener('scroll', onScroll);
+    return undefined;
+  }
+  pin();
+  return function () {
+    port.removeEventListener('scroll', onScroll);
+    if (observer) observer.disconnect();
+  };
+}
 function classFromCss(css, suffix) {
   if (!css) return '';
   const m = css.match(new RegExp('\\.([A-Za-z0-9_-]+_' + suffix + ')\\b'));
@@ -894,7 +949,15 @@ return {
         if (!port) return undefined;
         if (streaming && settings.smoothFollow) port.classList.add('dss-smooth-follow');
         else port.classList.remove('dss-smooth-follow');
-        return function () { port.classList.remove('dss-smooth-follow'); };
+        // The class alone never moves the port; observe this row so a growing
+        // think cannot slide under the composer.
+        const stopFollow = settings.smoothFollow
+          ? followGrowth(port, rootRef.current)
+          : undefined;
+        return function () {
+          if (typeof stopFollow === 'function') stopFollow();
+          port.classList.remove('dss-smooth-follow');
+        };
       }, [streaming, settings.smoothFollow]);
 
       React.useEffect(function () {
