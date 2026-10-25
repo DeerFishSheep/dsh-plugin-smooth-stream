@@ -313,6 +313,34 @@ function findScrollport(from) {
   const doc = g && g.document;
   return doc ? doc.querySelector('[data-conversation-scroll]') : null;
 }
+// Which step most recently produced thinking.
+//
+// A turn runs several steps (think, tool, think, tool, answer) and every step is
+// its own component instance, so "is this think still the newest?" cannot be
+// answered from inside one of them. This registry answers it across instances:
+// the newest think keeps its row open even after its own step has settled, and
+// folds the moment a later step starts thinking.
+const thinkLiveness = (function () {
+  let current = null;
+  const listeners = [];
+  return {
+    get: function () { return current; },
+    set: function (id) {
+      if (current === id) return;
+      current = id;
+      for (let i = 0; i < listeners.length; i += 1) {
+        try { listeners[i](); } catch (e) {}
+      }
+    },
+    subscribe: function (fn) {
+      listeners.push(fn);
+      return function () {
+        const at = listeners.indexOf(fn);
+        if (at !== -1) listeners.splice(at, 1);
+      };
+    },
+  };
+})();
 // How close to the bottom still counts as "following the live output".
 const FOLLOW_SLACK_PX = 96;
 /**
@@ -920,6 +948,19 @@ return {
 
       const loc = node && node.location;
       const turn = loc && (loc.kind === 'turn' || loc.kind === 'step') ? loc.turn : undefined;
+      // Whole-turn facts. `streaming` above only describes this one step, which is
+      // why a think used to vanish the instant its own step settled; the turn
+      // stays open across every step of the same reply.
+      const turnOpen = turn === undefined || turn.status !== 'closed';
+      const stepId = turn !== undefined && data.step !== undefined ? turn.turn + ':' + data.step : null;
+      const hasReasoning = blocks.some(function (b) { return b && b.kind === 'reasoning'; });
+      const [, pumpThink] = React.useReducer(function (x) { return x + 1; }, 0);
+      React.useEffect(function () { return thinkLiveness.subscribe(pumpThink); }, []);
+      React.useEffect(function () {
+        if (!turnOpen || !hasReasoning || stepId === null) return;
+        thinkLiveness.set(stepId);
+      }, [turnOpen, hasReasoning, stepId, blocks.length]);
+      const liveThinkStep = stepId !== null && thinkLiveness.get() === stepId;
       const tail = typeof props.useTurnData === 'function' ? props.useTurnData('turn-tail') : undefined;
       const mentions = React.useMemo(function () {
         if (typeof props.fileMentions !== 'function') return undefined;
@@ -1046,14 +1087,17 @@ return {
       for (let i = 0; i < blocks.length; i++) {
         if (blocks[i] && blocks[i].kind === 'reasoning') lastReasoningIdx = i;
       }
-      const autoExpand = settings.autoExpandStep && streaming;
-      // Which row stays open while the turn streams. 'next-step' tracks the live
-      // block, so the think folds the moment this step stops being the newest —
-      // on answer text, a tool call or a command alike. 'next-think' tracks the
-      // last think, so it survives the whole answer and only folds when another
-      // think begins. Either way the row closes at the end of the turn, so
-      // history never stays expanded.
-      const openSlot = settings.foldTiming === 'next-step' ? liveIdx : lastReasoningIdx;
+      // The two modes differ in BOTH what may stay open and when it is allowed to:
+      //   next-step - only while this step runs, so it folds the moment the step
+      //               stops being the newest (answer text, a tool call, a command)
+      //   next-think - for as long as the turn runs and this step is still the
+      //               newest to have thought, so it survives its own step ending
+      //               and folds only when a later step starts thinking
+      // Both stop at the end of the turn, so history never stays expanded.
+      const nextStepMode = settings.foldTiming === 'next-step';
+      const autoExpand = settings.autoExpandStep
+        && (nextStepMode ? streaming : (turnOpen && liveThinkStep));
+      const openSlot = nextStepMode ? liveIdx : lastReasoningIdx;
       for (let i = 0; i < blocks.length; i++) {
         const b = blocks[i];
         if (!b) continue;
