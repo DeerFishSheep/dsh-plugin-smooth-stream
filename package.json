@@ -32,6 +32,7 @@
   ],
   "scripts": {
     "build": "node _wrap-client.mjs",
+    "prepare": "node _wrap-client.mjs",
     "pretest": "npm run build",
     "prepack": "npm run build",
     "test": "node --test test/*.test.mjs",
