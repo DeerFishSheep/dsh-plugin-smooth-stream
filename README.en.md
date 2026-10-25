@@ -49,7 +49,7 @@ On top of upstream `1.3.0`, version `1.5.0` fixes three defects and adds two set
 | Reasoning never visible | A think row waited for 1000 characters before its first paragraph landed, so a short think stayed hidden for the whole step. The threshold is now 0, and text without any line break no longer stalls |
 | Reasoning folded too early | Liveness used "the last array slot", so a trailing empty block or a tool call made a fresh think look superseded. It now means "the last block that carries text" |
 | **Auto-expand the live step** (new) | The step being written opens itself and folds back when the next one starts. A manual click wins until that row changes role. On by default; switchable in settings |
-| **Fold a think away** (new) | Choose whether a think folds when the next think starts or when the answer starts. The default keeps it open while the answer writes |
+| **Fold a think away** (new) | Choose whether a think folds when the next think starts or when the next step starts. The default keeps it open while the answer writes |
 | Scroll follow | Upstream only set `scroll-behavior: smooth` and never scrolled, so a long think slid under the composer. A `ResizeObserver` now pins the port on growth, and stops as soon as the reader scrolls away |
 
 ## What it changes
@@ -71,7 +71,7 @@ The **Smooth Stream** section in the settings panel; changes apply live and pers
 | Batch size | 500 chars | Text accumulated before a batch reveals; smaller feels more live, larger reads calmer |
 | Smooth scroll-follow | On | The streaming-time scroll glide |
 | Auto-expand live step | On | The step being written stays open; starting the next one folds it back |
-| Fold a think away | When the next think starts | Either "when the next think starts", which keeps the reasoning readable through the answer, or "when the answer starts", which keeps long replies compact |
+| Fold a think away | When the next think starts | Either "when the next think starts", which keeps the reasoning readable through the answer, or "when the next step starts", which folds it as soon as the step ends - answer text, a tool call or a command |
 
 Includes a live preview and one-click reset. The settings UI follows DSH's display language.
 
